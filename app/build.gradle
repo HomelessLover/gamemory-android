@@ -1,0 +1,57 @@
+// La versión (versionCode) es el número de compilación de GitHub Actions; el
+// nombre, version.txt. REPO (usuario/gamemory-android) sirve para buscar
+// actualizaciones en GitHub. La firma llega de los secretos del repositorio
+// (ver ci/app.yml).
+plugins {
+    id 'com.android.application'
+}
+
+def ks = System.getenv('KEYSTORE_FILE')
+
+android {
+    namespace 'app.gamemory.movil'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'app.gamemory.movil'
+        minSdk 26
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('GITHUB_RUN_NUMBER') ?: '1')
+        versionName rootProject.file('version.txt').text.trim()
+        buildConfigField 'String', 'REPO', '"' + (System.getenv('GITHUB_REPOSITORY') ?: '') + '"'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias 'gamemory'
+                keyPassword System.getenv('KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ks) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

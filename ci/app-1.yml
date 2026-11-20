@@ -1,0 +1,47 @@
+# Construye Gamemory para Android en cada cambio (lo manda deploy.sh desde el
+# servidor). Con los secretos ANDROID_KEYSTORE y ANDROID_KEYSTORE_PASSWORD la
+# firma y la publica como «release» (la app la encuentra y se actualiza); sin
+# ellos, solo comprueba que compila.
+name: App
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Firma
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/gamemory.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/gamemory.jks" >> "$GITHUB_ENV"
+            echo "FIRMA=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Sin los secretos ANDROID_KEYSTORE y ANDROID_KEYSTORE_PASSWORD: solo se comprueba que compila."
+          fi
+      - name: Construir
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ "$FIRMA" = "1" ]; then gradle --no-daemon --console=plain assembleRelease; else gradle --no-daemon --console=plain assembleDebug; fi
+      - name: Publicar
+        if: env.FIRMA == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(cat version.txt)
+          cp app/build/outputs/apk/release/app-release.apk "gamemory-$V.apk"
+          gh release create "b${GITHUB_RUN_NUMBER}" "gamemory-$V.apk" --title "Gamemory para Android $V" --notes-file NOVEDADES.md
