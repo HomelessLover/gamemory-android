@@ -1,6 +1,3 @@
-Primera versión:
-- Gamemory en su propia app (la web de siempre, con tu servidor).
-- Elegir varias fotos a la vez al subir.
-- Compartir → Gamemory desde la galería, la app de Nintendo o la de PlayStation.
-- Al abrir la app, sube lo nuevo de las carpetas que elijas (Ajustes › App del móvil).
-- Se actualiza sola desde GitHub.
+1.0.1:
+- El inicio de sesión de Cloudflare se hace dentro de la app (antes se abría en el navegador y la app se quedaba en «Invalid login session»).
+- La sesión se guarda al salir de la app.

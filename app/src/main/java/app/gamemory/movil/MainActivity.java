@@ -186,7 +186,8 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        s.setUserAgentString(s.getUserAgentString() + " GamemoryApp/" + BuildConfig.VERSION_NAME);
+        // Sin el «; wv» del WebView: Google no deja iniciar sesión en un WebView que lo diga.
+        s.setUserAgentString(s.getUserAgentString().replace("; wv)", ")") + " GamemoryApp/" + BuildConfig.VERSION_NAME);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.addJavascriptInterface(new Puente(), "GamemoryApp");
@@ -195,8 +196,11 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 String esq = u.getScheme() == null ? "" : u.getScheme();
-                Uri srv = Uri.parse(fotos.servidor());
-                if ((esq.equals("http") || esq.equals("https")) && u.getHost() != null && u.getHost().equals(srv.getHost())) return false;
+                // v1.0.1: el inicio de sesión de Cloudflare Access (y el de Google,
+                // GitHub… si lo usa) se hace dentro de la app: si se iba al navegador,
+                // la sesión quedaba allí y la app no entraba («Invalid login session»).
+                // Solo los enlaces que tocas hacia otras webs se abren fuera.
+                if ((esq.equals("http") || esq.equals("https")) && dentro(u, r)) return false;
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, u));
                 } catch (ActivityNotFoundException e) {
@@ -229,6 +233,25 @@ public class MainActivity extends Activity {
         web.setDownloadListener((url, ua, disposicion, mime, largo) -> descargar(url, disposicion, mime));
         setContentView(web);
         web.loadUrl(fotos.servidor() + "/");
+    }
+
+    private static final String[] INICIO_SESION = {
+            "cloudflareaccess.com", "cloudflare.com", "accounts.google.com", "accounts.youtube.com",
+            "github.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com",
+    };
+
+    /** ¿Se queda en la app? Tu Gamemory, el inicio de sesión y las redirecciones sí. */
+    private boolean dentro(Uri u, WebResourceRequest r) {
+        String h = u.getHost() == null ? "" : u.getHost();
+        if (h.equals(Uri.parse(fotos.servidor()).getHost())) return true;
+        for (String d : INICIO_SESION) if (h.equals(d) || h.endsWith("." + d)) return true;
+        return r.isRedirect() || !r.hasGesture();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush();  // que la sesión se guarde aunque Android cierre la app
     }
 
     private void js(String codigo) {
