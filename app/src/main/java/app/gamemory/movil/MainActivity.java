@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
 
     private static final int REQ_ARCHIVOS = 1;
     private static final int REQ_CARPETA = 2;
+    private static final int REQ_NOTIF = 3;
     private static final String PREDETERMINADO = "https://gamemory.elhoyo.net";
     private static final long CADA_REVISION = 30_000L;
     private static final long CADA_ACTUALIZACION = 6 * 3600_000L;
@@ -73,6 +74,7 @@ public class MainActivity extends Activity {
     private List<Uri> pendienteCompartir = null;
     private long descargaApk = -1;
     private BroadcastReceiver alDescargar = null;
+    private String inicio = "/";  // v1.1: la notificación abre /sesion-activa (o con ?accion=…)
 
     @Override
     protected void onCreate(Bundle guardado) {
@@ -81,9 +83,30 @@ public class MainActivity extends Activity {
         p = getSharedPreferences("gamemory", MODE_PRIVATE);
         getWindow().setStatusBarColor(FONDO);
         getWindow().setNavigationBarColor(FONDO);
+        String ruta = getIntent() == null ? null : getIntent().getStringExtra(Sesion.EXTRA_URL);
+        if (ruta != null && ruta.startsWith("/")) {
+            inicio = ruta;
+            setIntent(new Intent(this, MainActivity.class));
+        }
         if (fotos.servidor().isEmpty()) pedirServidor(PREDETERMINADO);
         else abrirWeb();
         manejar(getIntent());
+        // v1.1: la notificación de la sesión activa
+        Sesion.programar(this);
+        pedirNotificaciones();
+    }
+
+    private void pedirNotificaciones() {
+        if (Build.VERSION.SDK_INT < 33 || !Sesion.activada(this) || p.getBoolean("notif_pedido", false)) return;
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return;
+        p.edit().putBoolean("notif_pedido", true).apply();
+        requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] permisos, int[] res) {
+        super.onRequestPermissionsResult(req, permisos, res);
+        if (req == REQ_NOTIF) Sesion.refrescar(this, true);
     }
 
     @Override
@@ -101,6 +124,7 @@ public class MainActivity extends Activity {
             fotos.revisar(false, this::aviso);
         }
         buscarActualizacion(false);
+        Sesion.refrescar(this, true);
     }
 
     @Override
@@ -217,6 +241,9 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 cargada = true;
+                // v1.1: al entrar en la sesión activa, la notificación vuelve aunque la hubieras quitado
+                if (url != null && url.contains("/sesion-activa")) p.edit().remove("sesion_quitada").apply();
+                Sesion.refrescar(MainActivity.this, false);
                 if (pendienteJs != null) {
                     String j = pendienteJs;
                     pendienteJs = null;
@@ -232,7 +259,8 @@ public class MainActivity extends Activity {
         });
         web.setDownloadListener((url, ua, disposicion, mime, largo) -> descargar(url, disposicion, mime));
         setContentView(web);
-        web.loadUrl(fotos.servidor() + "/");
+        web.loadUrl(fotos.servidor() + inicio);
+        inicio = "/";
     }
 
     private static final String[] INICIO_SESION = {
@@ -323,6 +351,14 @@ public class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     private void manejar(Intent i) {
         if (i == null) return;
+        // v1.1: desde la notificación de la sesión activa
+        String ruta = i.getStringExtra(Sesion.EXTRA_URL);
+        if (ruta != null && ruta.startsWith("/")) {
+            setIntent(new Intent(this, MainActivity.class));
+            if (web != null) web.loadUrl(fotos.servidor() + ruta);
+            else inicio = ruta;
+            return;
+        }
         String a = i.getAction();
         List<Uri> uris = new ArrayList<>();
         if (Intent.ACTION_SEND.equals(a)) {
@@ -486,6 +522,8 @@ public class MainActivity extends Activity {
                 o.put("ultima", p.getLong("ultima", 0));
                 o.put("ultima_n", p.getInt("ultima_n", 0));
                 o.put("ocupado", fotos.ocupado());
+                o.put("notif_sesion", Sesion.activada(MainActivity.this));
+                o.put("notif_permiso", Sesion.puede(MainActivity.this));
             } catch (Exception e) {
                 // nada
             }
@@ -532,6 +570,23 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void buscarActualizacion() {
             runOnUiThread(() -> MainActivity.this.buscarActualizacion(true));
+        }
+
+        /** v1.1: la página de la sesión activa avisa de que algo cambió (pausa, sigue, termina…). */
+        @JavascriptInterface
+        public void sesionCambiada() {
+            Sesion.refrescar(MainActivity.this, true);
+        }
+
+        @JavascriptInterface
+        public void setNotifSesion(boolean v) {
+            p.edit().putBoolean("notif_sesion", v).apply();
+            Sesion.programar(MainActivity.this);
+            if (v) {
+                p.edit().remove("notif_pedido").apply();
+                runOnUiThread(MainActivity.this::pedirNotificaciones);
+            }
+            Sesion.refrescar(MainActivity.this, true);
         }
 
         @JavascriptInterface

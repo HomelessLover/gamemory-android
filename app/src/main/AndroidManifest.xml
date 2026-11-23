@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Para instalar las actualizaciones que descarga de GitHub. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- v1.1: la notificación de la sesión activa y su revisión cada ~15 min (también tras reiniciar). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="Gamemory"
@@ -36,5 +39,20 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+
+        <!-- v1.1: «Pausa» / «Seguir» de la notificación, quitarla, y reprogramar al reiniciar o actualizar. -->
+        <receiver
+            android:name=".SesionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".SesionJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
     </application>
 </manifest>
